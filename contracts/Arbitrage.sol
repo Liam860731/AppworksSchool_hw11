@@ -30,18 +30,14 @@ contract Arbitrage is IUniswapV2Callee, Ownable {
         // TODO
         require(sender == address(this), "Sender must be this contract");
         require(amount0 != 0 || amount1 != 0, "amount0 or amount1 must be greater then zero");
-        (address priceLowerPool, address priceHigherPool, uint256 sushiAmount, uint256 repayAmount) = 
-        abi.decode(data,(address,address,uint256,uint256));
-        require(msg.sender == priceLowerPool, "message sender must be priceLowerPool");
-        address weth = IUniswapV2Pair(priceLowerPool).token0();
-        address usdc = IUniswapV2Pair(priceLowerPool).token1();
-        address[] memory path = new address[](2);
-        path[0] = address(weth);
-        path[1] = address(usdc);
-
-        IERC20(weth).transfer(priceHigherPool, amount0);
-        IUniswapV2Pair(priceHigherPool).swap(0, sushiAmount, address(this), new bytes(0));
-        IERC20(usdc).transfer(priceLowerPool, repayAmount);
+        CallbackData memory callbackData = abi.decode(data,(CallbackData));
+        require(msg.sender == callbackData.priceLowerPool, "message sender must be priceLowerPool");
+        address weth = IUniswapV2Pair(callbackData.priceLowerPool).token0();
+        address usdc = IUniswapV2Pair(callbackData.priceLowerPool).token1();
+        
+        IERC20(weth).transfer(callbackData.priceHigherPool, callbackData.borrowETH);
+        IUniswapV2Pair(callbackData.priceHigherPool).swap(0, callbackData.sushiAmount, address(this), new bytes(0));
+        IERC20(usdc).transfer(callbackData.priceLowerPool, callbackData.repayAmount);
 
 
     }
@@ -57,13 +53,14 @@ contract Arbitrage is IUniswapV2Callee, Ownable {
     // for testing convenient, we implement the method 1 here
     function arbitrage(address priceLowerPool, address priceHigherPool, uint256 borrowETH) external {
         // TODO
+        
         (uint uniReserveIn, uint uniReserveOut,) = IUniswapV2Pair(priceLowerPool).getReserves();
         (uint sushiReserveIn, uint sushiReserveOut,) = IUniswapV2Pair(priceHigherPool).getReserves();
-
+        
         uint256 sushiAmount = _getAmountOut(borrowETH, sushiReserveIn, sushiReserveOut);
         uint256 repayAmount = _getAmountIn(borrowETH, uniReserveOut, uniReserveIn);
-        IUniswapV2Pair(priceLowerPool).swap(borrowETH, 0, address(this), 
-        abi.encode(priceLowerPool,priceHigherPool,sushiAmount,repayAmount));
+        CallbackData memory data = CallbackData(priceLowerPool, priceHigherPool, sushiAmount, repayAmount, borrowETH);
+        IUniswapV2Pair(priceLowerPool).swap(borrowETH, 0, address(this), abi.encode(data));
     }
 
     //
