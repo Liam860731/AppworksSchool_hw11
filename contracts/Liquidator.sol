@@ -52,19 +52,17 @@ contract Liquidator is IUniswapV2Callee, Ownable {
         // TODO
         require(sender == address(this), "Sender must be this contract");
         require(amount0 != 0 || amount1 != 0, "amount0 or amount1 must be greater then zero");
-        (uint256 repayAmount, address[] memory path) = abi.decode(data, (uint256,address[]));
-        address pair = IUniswapV2Factory(_UNISWAP_FACTORY).getPair(path[0],path[1]);
-        require(msg.sender == pair,"message sender must be this pair");
-        // (uint256 repayAmount, address[] memory path) = abi.decode(data, (uint256, address[]));
-        address repayToken = path[0];
-        address borrowToken = path[1];
+        Callbackdata memory callbackData = abi.decode(data, (Callbackdata));
+
+        address repayToken = callbackData.path[0];
+        address borrowToken = callbackData.path[1];
         //80usdc -> 1 ether
-        IERC20(borrowToken).approve(_FAKE_LENDING_PROTOCOL, amount1);
+        IERC20(borrowToken).approve(_FAKE_LENDING_PROTOCOL, callbackData.amountOut);
         IFakeLendingProtocol(_FAKE_LENDING_PROTOCOL).liquidatePosition();
 
-        IWETH(path[0]).deposit{ value:repayAmount }();
+        IWETH(repayToken).deposit{ value:callbackData.repayAmount }();
 
-        IERC20(repayToken).transfer(pair, repayAmount);
+        IERC20(repayToken).transfer(callbackData.pair, callbackData.repayAmount);
         
     }
 
@@ -76,7 +74,8 @@ contract Liquidator is IUniswapV2Callee, Ownable {
         require(pair != address(0), "Pair not found");
 
         uint[] memory amountIn = IUniswapV2Router01(_UNISWAP_ROUTER).getAmountsIn(amountOut, path);
-        IUniswapV2Pair(pair).swap(0, amountOut, address(this), abi.encode(amountIn[0], path));
+        Callbackdata memory data = Callbackdata(amountIn[0], path, pair, amountOut);
+        IUniswapV2Pair(pair).swap(0, amountOut, address(this), abi.encode(data));
     }
 
     receive() external payable {}
